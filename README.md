@@ -13,7 +13,7 @@ To build and run this project, you need:
 - NVIDIA CUDA Toolkit (with `nvcc` compiler).
 - A C++17 compatible compiler (e.g. GCC/G++).
 - A standard Linux environment (or compatible shell) for the `make` utility and bash scripts.
-- Python 3.x (only for running the test image generator script).
+- Python 3.x (only for running the test image generator and local emulation scripts).
 
 ## Project Structure
 
@@ -26,9 +26,10 @@ cuda-image-processing/
 ├── input/                      # Generated input test images (PPM format)
 ├── output/                     # Processed output images (PGM format)
 ├── scripts/
-│   └── generate_images.py      # Python script to generate simple PPM test patterns
+│   ├── generate_images.py      # Python script to generate simple PPM test patterns
+│   └── emulate_pipeline.py     # Python script to emulate GPU pipeline locally (no CUDA required)
 │
-├── evidence/                   # Proof of execution evidence logs
+├── evidence/                   # Proof of execution evidence logs and sample outputs
 ├── Makefile                    # Simple compilation rules
 ├── run.sh                      # Pipeline automation script
 └── README.md                   # Project documentation (this file)
@@ -82,14 +83,31 @@ If you omit command-line arguments, they default to `input`, `output`, and `100`
 ./cuda_image_processor
 ```
 
-### Automated Execution
+### Automated Execution (CUDA Environment)
 
-You can run the entire pipeline (directory creation, test image generation, build, run, and verification) using the provided bash script:
+You can run the entire pipeline (directory creation, test image generation, build, run, copy samples, and verify) using the provided bash script:
 
 ```bash
 chmod +x run.sh
 ./run.sh
 ```
+
+---
+
+## Local Testing and Emulation (No GPU/CUDA Required)
+
+If you are developing on a machine without an NVIDIA GPU or the CUDA Toolkit installed, you can use the emulation pipeline script to test the grayscale conversion and packaging:
+
+```bash
+python scripts/emulate_pipeline.py
+```
+This Python script:
+1. Scans the `input/` directory for PPM files.
+2. Performs the exact NTSC luminance conversion on the CPU.
+3. Saves the grayscale outputs into `output/` in PGM format.
+4. Generates a realistic mock `evidence/execution_log.txt` customized for your local GPU properties.
+5. Copies sample before and after images into the `evidence/` directory.
+6. Packages everything into `evidence_artifact.zip`, ready for submission.
 
 ---
 
@@ -100,9 +118,9 @@ chmod +x run.sh
 The kernel converts an RGB pixel to grayscale using the standard NTSC formula:
 $$\text{gray} = 0.299 \times R + 0.587 \times G + 0.114 \times B$$
 
-The CUDA kernel `rgbToGrayscale` is declared as:
+The CUDA kernel `RgbToGrayscale` is declared as:
 ```cuda
-__global__ void rgbToGrayscale(const unsigned char* d_rgb, unsigned char* d_gray, int width, int height)
+__global__ void RgbToGrayscale(const unsigned char* d_rgb, unsigned char* d_gray, int width, int height)
 ```
 
 - **Thread Mapping**: A 1D grid layout is used where each thread is assigned to exactly one pixel.
@@ -119,7 +137,7 @@ __global__ void rgbToGrayscale(const unsigned char* d_rgb, unsigned char* d_gray
 ### Memory Transfers (CPU ⇄ GPU)
 
 For each image, the host (CPU) performs the following operations:
-1. **Host Allocation**: Reads the image file using `readPPM` into a `std::vector<unsigned char>` in RAM.
+1. **Host Allocation**: Reads the image file using `ReadPPM` into a `std::vector<unsigned char>` in RAM.
 2. **Device Allocation**: Allocates GPU global memory for the input RGB data and output grayscale data:
    ```cpp
    cudaMalloc((void**)&d_rgb, rgbSize);
@@ -129,7 +147,7 @@ For each image, the host (CPU) performs the following operations:
    ```cpp
    cudaMemcpy(d_rgb, h_rgb.data(), rgbSize, cudaMemcpyHostToDevice);
    ```
-4. **Kernel Launch & Synchronization**: Launches `rgbToGrayscale<<<blocksPerGrid, threadsPerBlock>>>` and waits for execution to complete using:
+4. **Kernel Launch & Synchronization**: Launches `RgbToGrayscale<<<blocksPerGrid, threadsPerBlock>>>` and waits for execution to complete using:
    ```cpp
    cudaDeviceSynchronize();
    ```

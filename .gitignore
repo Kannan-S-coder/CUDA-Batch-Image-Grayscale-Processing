@@ -1,0 +1,14 @@
+# Compiled binaries
+cuda_image_processor
+cuda_image_processor.exe
+*.o
+*.obj
+*.exp
+*.lib
+
+# Generated folders and files
+input/
+output/
+evidence/
+evidence_artifact.zip
+evidence_artifact.tar.gz
